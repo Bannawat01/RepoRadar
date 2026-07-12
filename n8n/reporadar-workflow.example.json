@@ -1,0 +1,93 @@
+{
+  "name": "RepoRadar",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reporadar",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook (from API)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.headers['x-reporadar-token'] }}",
+              "rightValue": "={{ $env.N8N_FORWARD_TOKEN }}",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "auth-check",
+      "name": "Verify Token",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "conditions": [ { "leftValue": "={{ $json.body.event }}", "rightValue": "push", "operator": { "type": "string", "operation": "equals" } } ] }, "outputKey": "push" },
+            { "conditions": { "conditions": [ { "leftValue": "={{ $json.body.event }}", "rightValue": "pull_request", "operator": { "type": "string", "operation": "equals" } } ] }, "outputKey": "pull_request" },
+            { "conditions": { "conditions": [ { "leftValue": "={{ $json.body.event }}", "rightValue": "issues", "operator": { "type": "string", "operation": "equals" } } ] }, "outputKey": "issues" }
+          ]
+        }
+      },
+      "id": "switch-event",
+      "name": "Switch on event",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"embeds\": [{\n    \"title\": {{ JSON.stringify($json.body.title) }},\n    \"url\": {{ JSON.stringify($json.body.url) }},\n    \"color\": 3066993,\n    \"author\": { \"name\": {{ JSON.stringify($json.body.actor.login) }}, \"url\": {{ JSON.stringify($json.body.actor.url) }}, \"icon_url\": {{ JSON.stringify($json.body.actor.avatar) }} },\n    \"description\": {{ JSON.stringify($json.body.body || '') }},\n    \"fields\": [ { \"name\": \"Repository\", \"value\": {{ JSON.stringify($json.body.repo.name) }}, \"inline\": true } ],\n    \"timestamp\": {{ JSON.stringify($now.toISO()) }}\n  }]\n}",
+        "options": {}
+      },
+      "id": "discord-push",
+      "name": "Discord — Push",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 160]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "ok"
+      },
+      "id": "respond",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1160, 300]
+    }
+  ],
+  "connections": {
+    "Webhook (from API)": { "main": [[{ "node": "Verify Token", "type": "main", "index": 0 }]] },
+    "Verify Token": { "main": [[{ "node": "Switch on event", "type": "main", "index": 0 }], []] },
+    "Switch on event": {
+      "main": [
+        [{ "node": "Discord — Push", "type": "main", "index": 0 }],
+        [{ "node": "Discord — Push", "type": "main", "index": 0 }],
+        [{ "node": "Discord — Push", "type": "main", "index": 0 }]
+      ]
+    },
+    "Discord — Push": { "main": [[{ "node": "Respond 200", "type": "main", "index": 0 }]] }
+  },
+  "settings": {},
+  "_comment": "STARTER STUB. One Discord HTTP node wired for all branches; duplicate it per event type and adjust color/fields (push=3066993 green, pull_request=5793266 blurple, issues=15105570 orange). Set N8N_FORWARD_TOKEN and DISCORD_WEBHOOK_URL as n8n environment variables. We'll flesh out per-event embeds in the n8n phase."
+}
