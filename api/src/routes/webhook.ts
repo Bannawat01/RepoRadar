@@ -1,6 +1,4 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { request as undiciRequest } from 'undici';
-import { env } from '../config/env.js';
 import { isValidGitHubSignature } from '../plugins/verifySignature.js';
 import {
   PushEventSchema,
@@ -13,36 +11,9 @@ import {
   normalizeIssues,
 } from '../transformers/toNormalized.js';
 import { eventLog } from '../store/eventLog.js';
+import { buildDiscordPayload } from '../discord/embeds.js';
+import { deliverToDiscord, DiscordDeliveryError } from '../discord/deliver.js';
 import type { NormalizedEvent } from '../types/index.js';
-
-/**
- * Forward the normalized event to n8n and confirm it was accepted.
- *
- * n8n replies with a meaningful status: 200 (delivered to Discord),
- * 401 (bad forward token), or 502 (Discord unreachable after its own retries).
- * We treat ANY non-2xx as a downstream failure and throw — the caller then
- * returns 502 and does NOT mark the delivery "seen", so GitHub redelivers.
- * This closes the fault-tolerance loop end to end.
- */
-async function forwardToN8n(payload: NormalizedEvent): Promise<void> {
-  const res = await undiciRequest(env.N8N_WEBHOOK_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-reporadar-token': env.N8N_FORWARD_TOKEN,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  // Always drain the body so undici can release the socket back to the pool.
-  const text = await res.body.text();
-
-  if (res.statusCode >= 400) {
-    throw new Error(
-      `n8n forward failed: ${res.statusCode} ${text.slice(0, 200)}`,
-    );
-  }
-}
 
 export default async function webhookRoutes(
   app: FastifyInstance,
@@ -99,13 +70,17 @@ export default async function webhookRoutes(
         return reply.code(400).send({ error: 'invalid payload' });
       }
 
-      // 4. Forward to n8n and require a 2xx acknowledgement.
+      // 4. Build the embed and deliver it to Discord (retries inside).
       try {
-        await forwardToN8n(normalized);
+        await deliverToDiscord(buildDiscordPayload(normalized));
       } catch (err) {
-        req.log.error({ err }, 'failed to forward to n8n');
+        const diagnostic =
+          err instanceof DiscordDeliveryError ? err.diagnostic : undefined;
+        req.log.error({ err, diagnostic }, 'failed to deliver to Discord');
         // Do NOT mark seen — return 502 so GitHub redelivers the event.
-        return reply.code(502).send({ error: 'downstream forward failed' });
+        return reply
+          .code(502)
+          .send({ error: 'discord delivery failed', diagnostic });
       }
 
       // 5. Record for idempotency + the activity feed (only after success).

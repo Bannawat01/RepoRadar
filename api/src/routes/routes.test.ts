@@ -5,20 +5,25 @@ import { MockAgent, setGlobalDispatcher } from 'undici';
 
 // Env must be set BEFORE importing anything that reads it (config/env.ts).
 process.env.GITHUB_WEBHOOK_SECRET = 'test-secret';
-process.env.N8N_WEBHOOK_URL = 'https://n8n.test/webhook/reporadar';
-process.env.N8N_FORWARD_TOKEN = 'fwd-token';
+process.env.DISCORD_WEBHOOK_URL = 'https://discord.test/api/webhooks/1/abc';
+process.env.DISCORD_MAX_TRIES = '2';
+process.env.DISCORD_RETRY_MS = '0'; // keep the retry path fast in tests
 process.env.CORS_ORIGINS = 'https://bannawat.site,http://localhost:5173';
 process.env.LOG_LEVEL = 'fatal';
 
-// Mock n8n. The reply status is dynamic so we can simulate downstream failure.
-let n8nStatus = 200;
+// Mock Discord. The reply status is dynamic so we can simulate failure.
+let discordStatus = 204;
+let discordCalls = 0;
 const agent = new MockAgent();
 agent.disableNetConnect();
 setGlobalDispatcher(agent);
 agent
-  .get('https://n8n.test')
-  .intercept({ path: '/webhook/reporadar', method: 'POST' })
-  .reply(() => ({ statusCode: n8nStatus, data: 'ok' }))
+  .get('https://discord.test')
+  .intercept({ path: '/api/webhooks/1/abc', method: 'POST' })
+  .reply(() => {
+    discordCalls++;
+    return { statusCode: discordStatus, data: '' };
+  })
   .persist();
 
 const { buildServer } = await import('../server.js');
@@ -60,7 +65,8 @@ before(async () => {
 
 beforeEach(() => {
   eventLog.clear();
-  n8nStatus = 200;
+  discordStatus = 204;
+  discordCalls = 0;
 });
 
 test('rejects invalid signature with 401', async () => {
@@ -119,8 +125,8 @@ test('duplicate delivery id is idempotent', async () => {
   assert.equal(logs.json().count, 1); // not stored twice
 });
 
-test('n8n non-2xx: returns 502, does NOT store or mark seen (GitHub can retry)', async () => {
-  n8nStatus = 502; // simulate Discord unreachable after n8n's own retries
+test('discord non-2xx: returns 502, does NOT store or mark seen (GitHub can retry)', async () => {
+  discordStatus = 500; // simulate Discord unreachable
   const headers = {
     'x-github-event': 'push',
     'x-github-delivery': 'retry-1',
@@ -128,18 +134,30 @@ test('n8n non-2xx: returns 502, does NOT store or mark seen (GitHub can retry)',
   };
   const failed = await inject(headers);
   assert.equal(failed.statusCode, 502);
+  assert.equal(discordCalls, 2); // retried up to DISCORD_MAX_TRIES
 
   // Nothing stored, delivery not marked seen.
   const logs1 = await app.inject({ method: 'GET', url: '/logs' });
   assert.equal(logs1.json().count, 0);
 
-  // GitHub redelivers the SAME id; n8n now healthy -> it succeeds and stores.
-  n8nStatus = 200;
+  // GitHub redelivers the SAME id; Discord now healthy -> it succeeds and stores.
+  discordStatus = 204;
   const ok = await inject(headers);
   assert.equal(ok.statusCode, 202);
   const logs2 = await app.inject({ method: 'GET', url: '/logs' });
   assert.equal(logs2.json().count, 1);
   assert.equal(logs2.json().events[0].id, 'retry-1');
+});
+
+test('discord 4xx (not 429) fails fast without retrying', async () => {
+  discordStatus = 404; // deleted webhook — retrying can never help
+  const res = await inject({
+    'x-github-event': 'push',
+    'x-github-delivery': 'gone-1',
+    'x-hub-signature-256': sign(pushBody),
+  });
+  assert.equal(res.statusCode, 502);
+  assert.equal(discordCalls, 1);
 });
 
 test('/logs respects limit and returns newest first', async () => {

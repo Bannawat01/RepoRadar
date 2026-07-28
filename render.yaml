@@ -23,7 +23,5 @@ services:
       # --- secrets: set these in the Render dashboard (Environment tab) ---
       - key: GITHUB_WEBHOOK_SECRET
         sync: false
-      - key: N8N_WEBHOOK_URL
-        sync: false
-      - key: N8N_FORWARD_TOKEN
+      - key: DISCORD_WEBHOOK_URL
         sync: false

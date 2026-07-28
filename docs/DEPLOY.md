@@ -2,7 +2,7 @@
 
 ## Prerequisites
 - Push this repo to GitHub (the `.env` file is gitignored — secrets won't leak).
-- Have your 3 secret values ready: `GITHUB_WEBHOOK_SECRET`, `N8N_WEBHOOK_URL`, `N8N_FORWARD_TOKEN`.
+- Have your 2 secret values ready: `GITHUB_WEBHOOK_SECRET`, `DISCORD_WEBHOOK_URL`.
 
 ## 1. Create the service (Blueprint)
 1. Render Dashboard → **New → Blueprint**.
@@ -16,13 +16,14 @@ Key settings (already in `render.yaml`):
 - Health check: `/healthz`
 
 ## 2. Set the secrets
-In the service → **Environment** tab, fill the three `sync:false` vars:
+In the service → **Environment** tab, fill the `sync:false` vars:
 
 | Key | Value |
 |-----|-------|
 | `GITHUB_WEBHOOK_SECRET` | same value you put in the GitHub webhook's Secret field |
-| `N8N_WEBHOOK_URL` | your n8n trigger URL, e.g. `https://<instance>.app.n8n.cloud/webhook/reporadar` |
-| `N8N_FORWARD_TOKEN` | same shared secret configured in n8n |
+| `DISCORD_WEBHOOK_URL` | Discord channel webhook URL (Server Settings → Integrations → Webhooks) |
+
+Optional tuning: `DISCORD_MAX_TRIES` (default `5`), `DISCORD_RETRY_MS` (default `3000`).
 
 `CORS_ORIGINS` (= `https://bannawat.site`), `HOST`, and `NODE_VERSION` are already set by the blueprint.
 Do **not** set `PORT` — Render injects it automatically and the app reads it.

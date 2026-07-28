@@ -11,8 +11,11 @@ const EnvSchema = z.object({
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
     .default('info'),
   GITHUB_WEBHOOK_SECRET: z.string().min(1, 'GITHUB_WEBHOOK_SECRET is required'),
-  N8N_WEBHOOK_URL: z.string().url('N8N_WEBHOOK_URL must be a valid URL'),
-  N8N_FORWARD_TOKEN: z.string().min(1, 'N8N_FORWARD_TOKEN is required'),
+  // Discord webhook the API posts embeds to directly (no n8n in the path).
+  DISCORD_WEBHOOK_URL: z.string().url('DISCORD_WEBHOOK_URL must be a valid URL'),
+  // Delivery resilience: attempts and the floor backoff between them (ms).
+  DISCORD_MAX_TRIES: z.coerce.number().int().min(1).default(5),
+  DISCORD_RETRY_MS: z.coerce.number().int().min(0).default(3000),
   // Comma-separated list of allowed frontend origins for CORS.
   // e.g. "https://bannawat.site,http://localhost:5173"
   CORS_ORIGINS: z
