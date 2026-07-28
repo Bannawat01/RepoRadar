@@ -2,8 +2,8 @@
 export type GitHubEventName = 'push' | 'pull_request' | 'issues' | 'ping';
 
 /**
- * The stable, minimal shape RepoRadar forwards to n8n. Downstream logic
- * (n8n branching, Discord embeds) depends on THIS, never on GitHub's raw payload.
+ * The stable, minimal shape RepoRadar routes on. Downstream logic
+ * (event routing, Discord embeds) depends on THIS, never on GitHub's raw payload.
  */
 export interface NormalizedEvent {
   event: 'push' | 'pull_request' | 'issues';

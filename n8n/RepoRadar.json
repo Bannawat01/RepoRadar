@@ -31,7 +31,7 @@
             {
               "id": "c-89669",
               "leftValue": "={{ $json.headers['x-reporadar-token'] }}",
-              "rightValue": "Repo-Rada-Secret-667",
+              "rightValue": "REPLACE_WITH_YOUR_FORWARD_TOKEN",
               "operator": {
                 "type": "string",
                 "operation": "equals",
@@ -205,7 +205,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://discord.com/api/webhooks/1525804139303407798/1zOIeCh-hPLvYN250BPe67fv-cfmB_dbFQP9_U9t2ybz3xIPqAM5WJcdbv2Tn0enGRlK",
+        "url": "REPLACE_WITH_YOUR_DISCORD_WEBHOOK_URL",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json) }}",
