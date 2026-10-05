@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import worker, { githubRepo } from '../src/index.js';
+import worker, { discordPayload, githubRepo } from '../src/index.js';
 
 const env = { INSTANCE_SECRET_KEY: 'instance-key', ADMIN_TOKEN: 'admin-token' } as any;
 
@@ -28,6 +28,11 @@ test('GitHub repository URL supplies owner and repo', () => {
   assert.equal(githubRepo('', 'https://example.com/Bannawat01/RepoRadar'), null);
 });
 
+test('push notification includes commit details', () => {
+  const message = discordPayload('push', { ref: 'refs/heads/main', compare: 'https://github.com/a/b/compare/1...2', sender: { login: 'Bannawat01' }, repository: { full_name: 'Bannawat01/RepoRadar' }, commits: [{ message: 'Improve Discord notifications\nMore detail', author: { name: 'Bannawat' } }] });
+  assert.equal(message.embeds[0].title, '1 commit(s) pushed to main');
+  assert.equal(message.embeds[0].description, '• Improve Discord notifications — Bannawat');
+});
 test('creates a hook from a GitHub repository URL', async () => {
   const bindings: unknown[][] = [];
   const createEnv = { ...env, DB: { prepare: () => ({ bind: (...values: unknown[]) => { bindings.push(values); return { run: async () => ({}) }; } }) } } as any;
