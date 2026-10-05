@@ -3,5 +3,6 @@
   "name": "reporadar",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-05",
-  "workers_dev": true
+  "workers_dev": true,
+  "d1_databases": [{ "binding": "DB", "database_name": "reporadar", "database_id": "replace-after-d1-create", "migrations_dir": "migrations" }]
 }

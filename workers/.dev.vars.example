@@ -2,3 +2,6 @@
 # with D1-managed values in the next feature.
 GITHUB_WEBHOOK_SECRET=replace-with-a-random-secret
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/000000000000000000/replace-me
+# Never commit a real secret.
+INSTANCE_SECRET_KEY=replace-with-a-random-32-byte-value
+ADMIN_TOKEN=replace-with-a-random-admin-token
