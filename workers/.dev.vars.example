@@ -1,0 +1,4 @@
+# For the first compatibility-only Worker. The multi-webhook UI replaces these
+# with D1-managed values in the next feature.
+GITHUB_WEBHOOK_SECRET=replace-with-a-random-secret
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/000000000000000000/replace-me
