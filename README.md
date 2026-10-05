@@ -1,74 +1,61 @@
-# RepoRadar 🛰️
+# RepoRadar
 
-Automated DevOps & GitHub monitoring bot. Captures GitHub Webhooks (Push, PR, Issues),
-validates & normalizes the payload via a **TypeScript (Fastify) API**, and delivers
-**Rich Embed** messages to **Discord** in real time.
+A self-hosted GitHub-to-Discord notifier for Cloudflare Workers + D1. Each deployment owns its webhook mappings, secrets, and admin token; no n8n or central service is required.
 
-```
-GitHub Webhook ──▶ API (validate + normalize + route + embed) ──▶ Discord (rich embed)
-   push/PR/issue      HMAC verify, zod parse, retrying delivery      channel + embed
-```
+## Deploy
 
-> The routing/embed layer originally ran in **n8n** (`n8n/RepoRadar.json`). It now lives in
-> the API (`src/discord/`) so the pipeline has no third-party runtime dependency.
-> The workflow JSON is kept for reference only.
+Prerequisites: Node 20+, a Cloudflare account, and Wrangler login.
 
-## Repo layout
-
-```
-RepoRadar/
-├── api/                      # TypeScript Fastify webhook receiver + validator
-│   ├── src/
-│   │   ├── server.ts         # Fastify bootstrap
-│   │   ├── config/env.ts     # env loading + validation (zod)
-│   │   ├── plugins/
-│   │   │   └── verifySignature.ts   # GitHub HMAC-SHA256 verification
-│   │   ├── routes/
-│   │   │   └── webhook.ts     # POST /webhooks/github
-│   │   ├── discord/
-│   │   │   ├── embeds.ts      # normalized event -> Discord rich embed
-│   │   │   └── deliver.ts     # POST to Discord webhook + retry/backoff
-│   │   ├── schemas/github.ts # zod schemas: push / pull_request / issues
-│   │   ├── transformers/
-│   │   │   └── toNormalized.ts       # raw GitHub payload -> normalized event
-│   │   └── types/index.ts
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── .env.example
-│   └── .gitignore
-├── n8n/
-│   └── RepoRadar.json        # legacy workflow export (reference only, not required)
-├── docs/
-│   └── ARCHITECTURE.md       # full end-to-end wiring
-├── .gitignore
-└── README.md
-```
-
-## The two pieces
-
-| Piece | Runs where | Responsibility |
-|-------|-----------|----------------|
-| **API** | Node (this repo, e.g. Render) | Verify GitHub signature, parse & validate payload, normalize, branch on `event` type, build the Discord embed, POST it to Discord with retries |
-| **Discord** | Discord server | Renders the rich embed in the target channel |
-
-## Quick start (API)
-
-```bash
-cd api
-cp .env.example .env      # fill in secrets
+```sh
+cd workers
 npm install
-npm run dev               # Fastify on http://localhost:3000
+npx wrangler login
+npx wrangler d1 create reporadar
 ```
 
-Expose it to GitHub during development (choose one):
+Copy the returned `database_id` into `workers/wrangler.jsonc`, then create the database schema and deployment secrets:
 
-```bash
-npx localtunnel --port 3000
-# or: ngrok http 3000  |  cloudflared tunnel --url http://localhost:3000
+```sh
+npx wrangler d1 migrations apply reporadar --remote
+npx wrangler secret put INSTANCE_SECRET_KEY
+npx wrangler secret put ADMIN_TOKEN
+npm run build
+npx wrangler deploy
 ```
 
-Point the GitHub webhook at `https://<public-url>/webhooks/github`.
+Generate both values with a password manager or `openssl rand -base64 32`. `INSTANCE_SECRET_KEY` must remain stable: changing it makes previously stored encrypted hook credentials unreadable. Do not commit `.dev.vars`.
 
-Required env: `GITHUB_WEBHOOK_SECRET`, `DISCORD_WEBHOOK_URL` (see `api/.env.example`).
+Open the Worker URL, unlock it with `ADMIN_TOKEN`, and create a webhook. Copy its displayed Payload URL and one-time GitHub secret into **GitHub  Settings  Webhooks  Add webhook**. Use `application/json`, then select Pushes, Pull requests, and Issues. Create the Discord webhook in Discord server settings and paste it only into the form.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full end-to-end flow and env vars.
+For local development:
+
+```sh
+cp .dev.vars.example .dev.vars
+# set real local values and use a local D1 database
+npx wrangler d1 migrations apply reporadar --local
+npm run dev
+```
+
+## How it works
+
+`POST /webhooks/:id` validates GitHub's HMAC-SHA256 over the raw request body and checks the configured owner/repository. It writes the delivery to D1 before returning `202`. A Worker continuation and a five-minute cron process pending jobs. Network errors, Discord 429 (honouring `retry_after`), and 5xx responses retry up to five times; non-429 4xx becomes failed. Delivery IDs are unique per hook and a conditional D1 update claims a job, preventing concurrent sends. Failed rows can be retried from the UI.
+
+This is at-least-once delivery: if Discord accepts a request but the Worker stops before recording `sent`, a retry can produce a duplicate message. GitHub is not relied on to redeliver failed downstream work.
+
+The UI keeps the admin token only in memory; locking or refreshing removes it. List APIs never return stored Discord URLs or GitHub secrets. Secrets are AES-GCM encrypted in D1 with `INSTANCE_SECRET_KEY`.
+
+## Free-tier notes
+
+Cloudflare's limits and pricing change. As of October 2026, Workers Free allows 100,000 requests/day, 10 ms CPU/request, 50 subrequests/request, and five cron triggers/account. D1 Free includes 5 million rows read/day, 100,000 rows written/day, and 5 GB total storage; requests can fail until the daily reset if limits are reached. This project offers no uptime guarantee. See [Workers limits](https://developers.cloudflare.com/workers/platform/limits/) and [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/).
+
+## Checks
+
+```sh
+cd workers
+npm test
+npm run build
+```
+
+`npm run build` is a non-deploying Wrangler dry run. Deployment is intentionally left to the instance owner.
+
+MIT licensed. Contributions welcome.
