@@ -42,6 +42,12 @@ test('resets a hook secret', async () => {
   const resetEnv = { ...env, DB: { prepare: (sql: string) => ({ bind: (...values: unknown[]) => sql.startsWith('SELECT') ? { first: async () => hook } : (updates.push(values), { run: async () => ({}) }) }) } } as any;
   const response = await worker.fetch(new Request('https://x/api/hooks/hook-1/secret', { method: 'POST', headers: { authorization: 'Bearer admin-token' } }), resetEnv, {} as ExecutionContext);
   assert.equal(response.status, 200);
-  assert.match((await response.json() as any).github_secret, /^[A-Za-z0-9+/]+$/);
+  const secret = (await response.json() as any).github_secret;
+  assert.match(secret, /^[A-Za-z0-9+/]+$/);
   assert.equal(updates[0][2], 'hook-1');
+
+  const revealEnv = { ...env, DB: { prepare: () => ({ bind: () => ({ first: async () => ({ ...hook, github_secret: updates[0][0] }) }) }) } } as any;
+  const revealed = await worker.fetch(new Request('https://x/api/hooks/hook-1/secret', { headers: { authorization: 'Bearer admin-token' } }), revealEnv, {} as ExecutionContext);
+  assert.equal(revealed.status, 200);
+  assert.equal((await revealed.json() as any).github_secret, secret);
 });
