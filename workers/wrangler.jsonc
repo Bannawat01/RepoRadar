@@ -5,5 +5,5 @@
   "compatibility_date": "2026-10-05",
   "workers_dev": true,
   "triggers": { "crons": ["*/5 * * * *"] },
-  "d1_databases": [{ "binding": "DB", "database_name": "reporadar", "database_id": "replace-after-d1-create", "migrations_dir": "migrations" }]
+  "d1_databases": [{ "binding": "DB", "database_name": "reporadar", "database_id": "1dd45450-8dd6-4ab2-bcea-175d31c0bb0b", "migrations_dir": "migrations" }]
 }

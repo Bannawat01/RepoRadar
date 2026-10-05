@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import worker from '../src/index.js';
+import worker, { githubRepo } from '../src/index.js';
 
 const env = { INSTANCE_SECRET_KEY: 'instance-key', ADMIN_TOKEN: 'admin-token' } as any;
 
@@ -21,4 +21,18 @@ test('Discord test API rejects non-Discord URLs', async () => {
 test('stored webhook test requires the admin token', async () => {
   const response = await worker.fetch(new Request('https://x/api/hooks/hook-1/test', { method: 'POST' }), env, {} as ExecutionContext);
   assert.equal(response.status, 401);
+});
+
+test('GitHub repository URL supplies owner and repo', () => {
+  assert.deepEqual(githubRepo('', 'https://github.com/Bannawat01/RepoRadar'), { owner: 'Bannawat01', repo: 'RepoRadar' });
+  assert.equal(githubRepo('', 'https://example.com/Bannawat01/RepoRadar'), null);
+});
+
+test('creates a hook from a GitHub repository URL', async () => {
+  const bindings: unknown[][] = [];
+  const createEnv = { ...env, DB: { prepare: () => ({ bind: (...values: unknown[]) => { bindings.push(values); return { run: async () => ({}) }; } }) } } as any;
+  const response = await worker.fetch(new Request('https://x/api/hooks', { method: 'POST', headers: { authorization: 'Bearer admin-token', 'content-type': 'application/json' }, body: JSON.stringify({ name: 'RepoRadar', owner: '', repo: 'https://github.com/Bannawat01/RepoRadar', discord_url: 'https://discord.com/api/webhooks/123/token' }) }), createEnv, {} as ExecutionContext);
+  assert.equal(response.status, 201);
+  assert.equal(bindings[0][2], 'Bannawat01');
+  assert.equal(bindings[0][3], 'RepoRadar');
 });

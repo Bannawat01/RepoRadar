@@ -1,52 +1,100 @@
 # RepoRadar
 
-A self-hosted GitHub-to-Discord notifier for Cloudflare Workers + D1. Each deployment owns its webhook mappings, secrets, and admin token; no n8n or central service is required.
+> A self-hosted GitHub  Discord notifier built with Cloudflare Workers and D1.
+
+Paste a repository URL, choose a Discord webhook, and RepoRadar turns GitHub activity into useful Discord messages. Every deployment owns its data and secrets—there is no central service or n8n instance.
+
+## What it does
+
+| You do | RepoRadar does |
+| --- | --- |
+| Paste `https://github.com/owner/repository` | Extracts the owner and repository automatically |
+| Add a Discord webhook | Tests it before a route can be created |
+| Configure the generated URL in GitHub | Verifies GitHub signatures and queues deliveries |
+| Push code or open a PR | Sends a Discord notification and retries failures |
 
 ## Deploy
 
-Prerequisites: Node 20+, a Cloudflare account, and Wrangler login.
+### 1. Prerequisites
+
+- Node.js 20+
+- A Cloudflare account
 
 ```sh
 cd workers
 npm install
 npx wrangler login
+```
+
+### 2. Create D1
+
+```sh
 npx wrangler d1 create reporadar
 ```
 
-Copy the returned `database_id` into `workers/wrangler.jsonc`, then create the database schema and deployment secrets:
+Copy the returned `database_id` into `workers/wrangler.jsonc`.
+
+### 3. Create tables and secrets
 
 ```sh
 npx wrangler d1 migrations apply reporadar --remote
 npx wrangler secret put INSTANCE_SECRET_KEY
 npx wrangler secret put ADMIN_TOKEN
-npm run build
+```
+
+Use unique, strong values. `INSTANCE_SECRET_KEY` must stay unchanged after hooks exist, because it encrypts their saved credentials. `ADMIN_TOKEN` unlocks the dashboard.
+
+### 4. Publish
+
+```sh
 npx wrangler deploy
 ```
 
-Generate both values with a password manager or `openssl rand -base64 32`. `INSTANCE_SECRET_KEY` must remain stable: changing it makes previously stored encrypted hook credentials unreadable. Do not commit `.dev.vars`.
+Open the Worker URL shown by Wrangler and sign in with `ADMIN_TOKEN`.
 
-Open the Worker URL, unlock it with `ADMIN_TOKEN`, and create a webhook. Copy its displayed Payload URL and one-time GitHub secret into **GitHub  Settings  Webhooks  Add webhook**. Use `application/json`, then select Pushes, Pull requests, and Issues. Create the Discord webhook in Discord server settings and paste it only into the form.
+## Create your first webhook
 
-For local development:
+1. In RepoRadar, enter a display name.
+2. Paste a full GitHub repository URL in **GitHub Repository**—for example `https://github.com/Bannawat01/RepoRadar`. Leave **GitHub Owner** empty.
+3. Paste a Discord webhook URL, then select **Test Discord webhook**. Confirm that Discord receives the test message.
+4. Select **Create secure webhook** and copy the shown Payload URL and Secret. The secret is shown once.
+5. In the GitHub repository, open **Settings  Webhooks  Add webhook** and paste both values.
+   - Content type: `application/json`
+   - Events: Pushes, Pull requests, Issues
+6. Push a commit. The delivery appears in RepoRadar's Activity list and in Discord.
+
+## Share with a team
+
+The deployed Worker URL is already shareable. Send teammates the URL and `ADMIN_TOKEN` separately, ideally using a password manager.
+
+> Everyone with `ADMIN_TOKEN` is an administrator: they can manage hooks and view deliveries. Do not commit it or post it in public chat.
+
+If the token is exposed, replace it:
 
 ```sh
+cd workers
+npx wrangler secret put ADMIN_TOKEN
+```
+
+Refresh the dashboard and sign in with the new value. This small deployment intentionally has one shared admin token; add individual accounts only when access levels are needed.
+
+## Local development
+
+```sh
+cd workers
 cp .dev.vars.example .dev.vars
-# set real local values and use a local D1 database
+# Set local values in .dev.vars
 npx wrangler d1 migrations apply reporadar --local
 npm run dev
 ```
 
+Never commit `.dev.vars`.
+
 ## How it works
 
-`POST /webhooks/:id` validates GitHub's HMAC-SHA256 over the raw request body and checks the configured owner/repository. It writes the delivery to D1 before returning `202`. A Worker continuation and a five-minute cron process pending jobs. Network errors, Discord 429 (honouring `retry_after`), and 5xx responses retry up to five times; non-429 4xx becomes failed. Delivery IDs are unique per hook and a conditional D1 update claims a job, preventing concurrent sends. Failed rows can be retried from the UI.
+GitHub requests are validated with HMAC-SHA256 before RepoRadar accepts them. Valid events are stored in D1, delivered to Discord, and retried up to five times for temporary failures. A five-minute cron job resumes pending deliveries.
 
-This is at-least-once delivery: if Discord accepts a request but the Worker stops before recording `sent`, a retry can produce a duplicate message. GitHub is not relied on to redeliver failed downstream work.
-
-The UI keeps the admin token only in memory; locking or refreshing removes it. List APIs never return stored Discord URLs or GitHub secrets. Secrets are AES-GCM encrypted in D1 with `INSTANCE_SECRET_KEY`.
-
-## Free-tier notes
-
-Cloudflare's limits and pricing change. As of October 2026, Workers Free allows 100,000 requests/day, 10 ms CPU/request, 50 subrequests/request, and five cron triggers/account. D1 Free includes 5 million rows read/day, 100,000 rows written/day, and 5 GB total storage; requests can fail until the daily reset if limits are reached. This project offers no uptime guarantee. See [Workers limits](https://developers.cloudflare.com/workers/platform/limits/) and [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/).
+Delivery is at-least-once: if Discord receives a message but the Worker stops before saving its success, one duplicate can occur on retry.
 
 ## Checks
 
@@ -56,6 +104,13 @@ npm test
 npm run build
 ```
 
-`npm run build` is a non-deploying Wrangler dry run. Deployment is intentionally left to the instance owner.
+`npm run build` performs a Wrangler dry-run; deploy explicitly with `npx wrangler deploy`.
 
-MIT licensed. Contributions welcome.
+## Security notes
+
+- Discord URLs and GitHub webhook secrets are encrypted in D1.
+- The dashboard token stays only in the current browser session.
+- Hook lists never expose saved Discord URLs or GitHub secrets.
+- Review Cloudflare's current [Workers limits](https://developers.cloudflare.com/workers/platform/limits/) and [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/) before production use.
+
+MIT licensed.
