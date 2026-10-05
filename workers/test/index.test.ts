@@ -36,3 +36,12 @@ test('creates a hook from a GitHub repository URL', async () => {
   assert.equal(bindings[0][2], 'Bannawat01');
   assert.equal(bindings[0][3], 'RepoRadar');
 });
+test('resets a hook secret', async () => {
+  const hook = { id: 'hook-1', name: 'Route', owner: 'Bannawat01', repo: 'RepoRadar', enabled: 1 };
+  const updates: unknown[][] = [];
+  const resetEnv = { ...env, DB: { prepare: (sql: string) => ({ bind: (...values: unknown[]) => sql.startsWith('SELECT') ? { first: async () => hook } : (updates.push(values), { run: async () => ({}) }) }) } } as any;
+  const response = await worker.fetch(new Request('https://x/api/hooks/hook-1/secret', { method: 'POST', headers: { authorization: 'Bearer admin-token' } }), resetEnv, {} as ExecutionContext);
+  assert.equal(response.status, 200);
+  assert.match((await response.json() as any).github_secret, /^[A-Za-z0-9+/]+$/);
+  assert.equal(updates[0][2], 'hook-1');
+});
