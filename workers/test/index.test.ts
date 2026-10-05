@@ -18,3 +18,7 @@ test('Discord test API rejects non-Discord URLs', async () => {
   const response = await worker.fetch(new Request('https://x/api/test-discord', { method: 'POST', headers: { authorization: 'Bearer admin-token', 'content-type': 'application/json' }, body: JSON.stringify({ discord_url: 'https://example.com/webhook' }) }), env, {} as ExecutionContext);
   assert.equal(response.status, 400);
 });
+test('stored webhook test requires the admin token', async () => {
+  const response = await worker.fetch(new Request('https://x/api/hooks/hook-1/test', { method: 'POST' }), env, {} as ExecutionContext);
+  assert.equal(response.status, 401);
+});
