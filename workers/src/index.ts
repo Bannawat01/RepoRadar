@@ -1,3 +1,4 @@
+import { ui } from './ui.js';
 export interface Env {
   DB: D1Database;
   INSTANCE_SECRET_KEY: string;
@@ -32,6 +33,7 @@ async function processDue(env: Env) { for (let i = 0; i < 10; i++) { const row =
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url); const path = url.pathname;
+    if (request.method === 'GET' && path === '/') return new Response(ui, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
     if (request.method === 'GET' && path === '/healthz') return json({ status: 'ok' });
     if (path.startsWith('/api/')) {
       if (!authorized(request, env)) return json({ error: 'unauthorized' }, 401);
